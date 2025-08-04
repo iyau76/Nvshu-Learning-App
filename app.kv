@@ -1,0 +1,195 @@
+#:kivy 2.3.0
+
+<Label>:
+    font_name: 'NvshuFont'
+
+<Button>:
+    font_name: 'NvshuFont'
+    background_color: (0.2, 0.2, 0.2, 1)
+    background_normal: ''
+
+<MenuScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 40
+        spacing: 20
+        Label:
+            text: '女书学习 App \n 𛆁𛈬𛉬𛆓𛊉𛈍'
+            font_name: 'NvshuFont'
+            font_size: '36sp'
+        Button:
+            text: '学习\n𛉬𛆓'
+            font_size: '28sp'
+            on_release: app.root.current = 'chapter'
+        Button:
+            text: '测试（开发中）\n𛋰𛈏(𛇶𛆐𛈌)'
+            font_size: '28sp'
+            # on_release: app.root.current = 'testing' # 待开发
+        Button:
+            text: '设置\n𛊗𛋔'
+            font_size: '28sp'
+            # 关键修复：恢复按钮的 on_release 事件
+            on_release: app.root.current = 'settings'
+        Button:
+            text: '退出\n𛊇𛈚'
+            font_size: '28sp'
+            on_release: app.stop()
+
+<ChapterScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 40
+        ScrollView:
+            do_scroll_x: False
+            BoxLayout:
+                id: chapter_box
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+        Button:
+            text: "主菜单\n𛋱𛈠𛈁"
+            size_hint_y: None
+            font_size: '24sp'
+            line_height: 1.1
+            height: "72dp"
+            on_release: app.root.current = 'menu'
+
+<LearningScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 15
+        spacing: 10
+        BoxLayout:
+            size_hint_y: None
+            height: '40dp'
+            Label:
+                id: learned_label
+                text: "本轮学会: 0/10"
+                halign: 'left'
+                text_size: self.size
+            Button:
+                id: menu_button
+                text: "主菜单\n𛋱𛈠𛈁"
+                size_hint_x: None
+                width: '100dp'
+                on_release: app.root.current = "menu"
+        BoxLayout:
+            id: content_area
+            orientation: 'vertical'
+            spacing: 10
+            size_hint_y: 1
+        ScrollView:
+            id: explanation_scroll
+            size_hint_y: 0.3
+            height: 0
+            opacity: 0
+            do_scroll_x: False
+            Label:
+                id: explanation_label
+                text: ""
+                size_hint_y: None
+                height: self.texture_size[1]
+                text_size: self.width, None
+                markup: True
+                padding: (10, 10)
+        BoxLayout:
+            id: nav_bar
+            size_hint_y: None
+            height: '50dp'
+            spacing: 15
+            Button:
+                id: prev_button
+                text: "上一题"
+                on_release: root.prev_question()
+                font_size: '20sp'
+            Button:
+                id: next_button
+                text: "下一题"
+                font_size: '20sp'
+                on_release: root.next_question()
+
+<ReviewScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 10
+        Label:
+            text: "复盘本次学习    𛋷𛋅𛇅𛇠𛉬𛆓"
+            font_size: '24sp'
+            size_hint_y: None
+            height: '40dp'
+        ScrollView:
+            Label:
+                id: review_content_label
+                font_name: 'NvshuFont'
+                text: ''
+                size_hint_y: None
+                height: self.texture_size[1]
+                text_size: self.width - 20, None
+                padding: (10, 10)
+                markup: True
+        Button:
+            text: "主菜单\n𛋱𛈠𛈁"
+            font_size: '24sp'
+            size_hint_y: None
+            height: '72dp'
+
+            on_release: root.back_to_menu()
+
+<SettingsScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 20
+
+        Label:
+            text: '应用设置'
+            font_size: '28sp'
+            size_hint_y: None
+            height: '40dp'
+
+        # --- 每轮题量设置 ---
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height: '120dp'
+            spacing: 10
+            Label:
+                text: '修改每轮学习/复习的题目数量 (建议5-20)'
+                font_size: '18sp'
+            TextInput:
+                id: questions_input
+                text: root.questions_per_session_text
+                font_name: 'NvshuFont'
+                font_size: '20sp'
+                halign: 'center'
+                input_filter: 'int'
+                multiline: False
+                size_hint_y: None
+                height: '48dp'
+            Button:
+                text: '保存题量设置'
+                font_size: '20sp'
+                on_release: root.save_settings()
+                size_hint_y: None
+                height: '48dp'
+
+        # --- 重置进度 ---
+        Button:
+            text: '重置章节学习进度'
+            font_size: '20sp'
+            on_release: root.show_reset_options()
+            size_hint_y: None
+            height: '48dp'
+
+        # --- 占位符，让返回按钮靠底 ---
+        Widget:
+
+        # --- 返回主菜单 ---
+        Button:
+            text: '主菜单'
+            on_release: app.root.current = 'menu'
+            font_size: '24sp'
+            size_hint_y: None
+            height: '48dp'
