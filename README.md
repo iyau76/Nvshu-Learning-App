@@ -40,7 +40,6 @@
 ### 🧪 开发环境运行
 
 ```bash
-cd nvshu-learning-app
 python main.py
 ```
 
@@ -87,4 +86,3 @@ python main.py
 ---
 
 > “女书，不仅是文字，更是记忆、情感与生命的纹理。” —— Nvshu App 团队
-
