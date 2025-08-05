@@ -118,17 +118,19 @@
             text: "复盘本次学习    𛋷𛋅𛇅𛇠𛉬𛆓"
             font_size: '24sp'
             size_hint_y: None
-            height: '40dp'
+            height: '40dp' 
         ScrollView:
-            Label:
-                id: review_content_label
-                font_name: 'NvshuFont'
-                text: ''
+            do_scroll_x: False
+            do_scroll_y: True
+
+            GridLayout:
+                id: review_container           # 👈 用于动态添加多个 Label
+                cols: 1
                 size_hint_y: None
-                height: self.texture_size[1]
-                text_size: self.width - 20, None
+                height: self.minimum_height
                 padding: (10, 10)
-                markup: True
+                spacing: 10
+
         Button:
             text: "主菜单\n𛋱𛈠𛈁"
             font_size: '24sp'
