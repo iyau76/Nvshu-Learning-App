@@ -37,11 +37,36 @@
 
 ## 📦 安装方式
 
-### 🧪 开发环境运行
+---
+
+### 📂 下载源码
+
+1. 打开 GitHub 项目主页
+2. 点击绿色的 `Code` 按钮
+3. 选择 `Download ZIP`
+4. 解压后得到项目文件夹
+
+### ⚙️ 安装依赖
+
+确保已安装 Python 3.9+，推荐使用虚拟环境。
 
 ```bash
+pip install kivy
+```
+
+如需安卓打包：
+
+```bash
+pip install buildozer
+```
+
+### 🚀 如何运行（PC端）
+
+```bash
+cd Nvshu-Learning-App-main  # 进入 main.py 所在目录，这取决于你解压后该文件夹的位置，你可以复制文件夹的路径得到（Ctrl+Shift+V）
 python main.py
 ```
+
 
 需安装依赖：
 
@@ -58,6 +83,21 @@ python main.py
 安装后即可在安卓设备上运行，无需额外依赖。
 
 ---
+
+## 📁 项目结构
+
+```
+nvshu_app/
+├── main.py                  # 主程序入口
+├── app.kv                  # Kivy UI 布局文件
+├── review_screen.py        # 复盘界面逻辑
+├── learning_screen.py      # 学习主界面逻辑
+├── data/                   # 存储题库数据和用户进度
+├── fonts/                  # 女书字体文件 NvshuFont.ttf
+├── images/                 # 图标与 UI 素材
+└── buildozer.spec          # 安卓打包配置文件
+```
+
 
 ## 🛠 技术栈
 
@@ -80,7 +120,7 @@ python main.py
 
 - 赵丽明教授（指导老师）
 - 致理书院“清纫书永”实践支队全体成员
-- 江永县女书文化保护协会
+- Gemini, ChatGPT, Deepseek等LLM的大力帮助
 - 所有支持本项目的朋友们！
 
 ---
