@@ -25,7 +25,7 @@
 
 | 学习界面 | 答题反馈 | 学习完成 |
 | -------- | -------- | -------- |
-| ![](./screenshots/1.jpg) | ![](./screenshots/2.jpg) | ![](./screenshots/3.png) |
+| ![](./screenshots/1.jpg) | ![](./screenshots/2.jpg) | ![](./screenshots/3.jpg) |
 
 | 重置进度 | 复盘界面 | 主菜单 |
 | -------- | -------- | ------ |
