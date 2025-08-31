@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>女书生态矛盾图谱</title>
+<style>
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+  /* 让布局更紧凑：右栏变窄、左侧占满；固定满屏高 */
+  #wrap{display:grid;grid-template-columns:1fr 260px;gap:12px;height:100vh}
+  #graph{background:#0b1117;width:100%;height:100%;display:block}
+  #side{padding:12px;overflow:auto;background:#0f172a;color:#e2e8f0}
+  #side h1{font-size:18px;margin:0 0 8px}
+  #side h2{font-size:14px;opacity:.9;margin:12px 0 6px}
+  .legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;font-size:12px}
+  .legend div{display:flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
+  #tooltip{position:fixed;pointer-events:none;background:rgba(15,23,42,.92);color:#e2e8f0;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.35);transform:translate(-50%,-120%);opacity:0;transition:opacity .12s;white-space:pre-wrap;max-width:42vw}
+  .edge{stroke-width:1.6}
+  .edge:hover{stroke-width:2}
+  .label{fill:#94a3b8;font-size:10px;user-select:none}
+  .node{cursor:grab}
+  .node:active{cursor:grabbing}
+  .muted{opacity:.25}
+  .kbd{background:#1f2937;border:1px solid #374151;border-bottom-width:2px;padding:2px 6px;border-radius:6px;font-size:12px}
+  a{color:#60a5fa}
+  #kindFilter label,#typeFilter label{display:flex;align-items:center;gap:8px}
+  #kindFilter input,#typeFilter input{transform:scale(1.1)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <svg id="graph" role="img" aria-label="女书生态矛盾图谱"></svg>
+  <aside id="side">
+    <h1>女书生态矛盾图谱</h1>
+    <div style="font-size:12px;opacity:.85">悬停看摘要，点击节点在右侧看详情；拖动画布、滚轮缩放；F 高亮近邻，L 显示/隐藏边标签，R 重置。</div>
+
+    <h2>节点类型</h2>
+    <div class="legend" id="nodeLegend"></div>
+
+    <h2>关系线</h2>
+    <div class="legend">
+      <div><span class="dot" style="background:#22c55e"></span>合作/支持（绿）</div>
+      <div><span class="dot" style="background:#ef4444"></span>反对/批评（红）</div>
+      <div><span class="dot" style="background:#9ca3af"></span>复杂/并存/张力（灰）</div>
+    </div>
+
+    <h2>关系筛选</h2>
+    <div id="kindFilter" class="legend" style="grid-template-columns:1fr">
+      <label><input type="checkbox" value="support" checked> 仅/也 显示绿色（合作/支持）</label>
+      <label><input type="checkbox" value="oppose"  checked> 仅/也 显示红色（反对/批评）</label>
+      <label><input type="checkbox" value="complex" checked> 仅/也 显示灰色（复杂/张力）</label>
+    </div>
+
+    <h2>主体筛选</h2>
+    <div id="typeFilter" class="legend" style="grid-template-columns:1fr"></div>
+
+    <h2>详情</h2>
+    <div id="detail">把鼠标移到节点或连线查看摘要，这里显示更完整信息。</div>
+
+    <h2>快捷键</h2>
+    <div style="font-size:12px;opacity:.85;display:grid;gap:6px">
+      <div><span class="kbd">F</span> 仅高亮所选节点的直接关系</div>
+      <div><span class="kbd">L</span> 切换边标签显示</div>
+      <div><span class="kbd">R</span> 重置过滤与视图</div>
+    </div>
+  </aside>
+</div>
+<div id="tooltip"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script>
+/* ========== 颜色与判别 ========== */
+const COLORS = {
+  Government:"#ef4444",   // 政府
+  Official:"#f59e0b",     // 官员
+  Scholar:"#6366f1",      // 学者
+  Transmitter:"#22c55e",  // 传承人
+  Institution:"#a855f7",  // 机构
+  Program:"#14b8a6",      // 项目
+  Event:"#a16207",        // 事件
+  Business:"#fbbf24",     // 企业/品牌
+  Channel:"#38bdf8",      // 渠道
+  Public:"#f472b6",       // 大众/受众
+  Market:"#fde047",       // 市场力量
+  System:"#64748b"        // 官方制度
+};
+const TYPE_LABEL = {
+  Government:"政府", Official:"官员", Scholar:"学者", Transmitter:"传承人",
+  Institution:"机构", Program:"项目", Event:"事件", Business:"企业",
+  Channel:"渠道", Public:"大众", Market:"市场", System:"官方制度"
+};
+const EDGE_COLORS = { support:"#22c55e", oppose:"#ef4444", complex:"#9ca3af" };
+
+function inferKind(text){
+  const t = (text||"");
+  const NEG = /(反对|批评|指控|质疑|否定|不认可|冲突|破裂|不满|造假|男撰女书|自造女字)/;
+  const POS = /(合作|认可|支持|推荐|邀请|尊重|背书|撰序|出版|引述|主办|协同|资助|对接|共识|参与|宣传|主阵地)/;
+  if (/(复杂|并存|共存|两面|拉扯|张力|矛盾|示意)/.test(t)) return "complex";
+  const hasNeg = NEG.test(t), hasPos = POS.test(t);
+  if (hasNeg && hasPos) return "complex";
+  if (hasNeg) return "oppose";
+  if (hasPos) return "support";
+  return "complex";
+}
+const nameOf = v => (v && typeof v === 'object') ? v.id : v;
+
+/* ========== 数据（合成：更正/新增） ========== */
+const nodes = [
+  // —— 政府/机构/项目/渠道/事件 ——
+  { id:"江永县文旅广体局", type:"Government", note: String.raw`牵头女书保护与文旅融合：
+• 主办暑期培训班（约16年），逐步官方化；
+• 与非遗中心协同推进名录/评审的量化考核与“动态管理”；
+• 强化新媒体宣传矩阵；推进生态博物馆科技化/体验式升级。` },
+  { id:"朱亚玲", type:"Official", note:String.raw`副局长。说明培训班演变/学员画像；“补贴为表、荣誉/市场为里”的激励；个案（危房、养老）多部门协同。`, parent:"江永县文旅广体局" },
+  { id:"江永县政府", type:"Government", note:"与文旅局联动；在清华校庆展等节点承担对接与背书角色。" },
+  { id:"江永县非遗保护中心", type:"Institution", note:"名录申报/代表性传承人评审管理，与文旅体系协同。" },
+  { id:"江永女书生态博物馆", type:"Institution", note:"官方主阵地之一；数字化、沉浸式体验升级。" },
+  { id:"永州博物馆", type:"Institution", note:"设《江永女书展》，承担区域展陈与公众教育。" },
+  { id:"女书暑期培训班", type:"Program", note:"多年持续；本地/外地学员近年各半；趋于年轻化与高学历化；在“原真性—教学效率”间平衡。" },
+  { id:"江永县文旅官方账号", type:"Channel", note:"县域文旅宣传渠道；计划扩容平台矩阵与内容样式。" },
+  { id:"清华女书展（2025校庆）", type:"Event", note:"校庆节点；县长/局长/传承人到场，成为学界—政府—传承人对接窗口。" },
+
+  // —— 学者（中外） ——
+{ 
+  id:"赵丽明", 
+  type:"Scholar", 
+  note:String.raw`清华大学教授，女书研究领域的绝对核心与权威，扮演着“守门人”、资源“连接者”和争议中心等多重角色。
+
+A. 学术“守门人”与“原真性”的定义者：
+• 核心立场：反复强调“失真比失传更可怕”，将女书的“原真性”定义为其“诉苦”的核心功能、硬笔书写传统（反对“柳叶体”书法）和以江永城关话为基础的“标准音”。
+• 学术“正统”的建立：系统性地批驳了“甲骨文演变说”、“母系社会遗留说”等多种起源论。通过与语言学家陈其光合作，从语言学上排除了“苗瑶语源说”，巩固了“汉源说”的主流地位。
+• 对同行的尖锐批评：对她认为是“学术不端”或“投机”的行为进行毫不留情的公开及私下批评。例如，指责宫哲兵为代表的学者进行“掠夺式研究”，批评湖南女子学院的周红金老师“胡说八道”，认为其研究动机不纯。
+
+B. 权力、争议与矛盾的实践：
+• 与何艳新的核心争议：在与“半自然传人”何艳新合作整理《中国女书合集》的过程中，发生了严重的署名权与报酬争议。何艳新泣诉称，自己高强度工作但报酬微薄，且最终成果出版时其名字被完全抹去，感到“被利用”和“被剥削”。这一事件是女书生态中学术权力不对等的最深刻体现。
+• 对“女性主义”的警惕与回避：在晚宴等场合，激烈地、情绪化地反对用西方“女权主义”框架解读女书，警告学生避免“惹麻烦”。她提出的“东方女性主义”更强调一种顺从框架下的智慧与疗愈。
+• 对商业化的矛盾态度：一方面，她在公开讲座和对学生的教导中，严厉抨击女书的商业化、表演化乱象；另一方面，在实际行动中，她也与付费的“研学团”合作，其行程食宿由商业机构承担，显示出其在理论批判与个人实践之间的复杂性。
+
+C. 资源“连接者”与体制影响力：
+• 核心人脉节点：掌握着与江永地方政府（县长、文旅局长）、官方传承人等关键人物的直接联系，并以此作为指导学生、推进研究的重要筹码。
+• 制度内的影响力：在传承人评选等官方体系中拥有重要话语权，例如在评审中曾出于“风格多样性”的考量，推荐了后学型的何静华。
+• 资源撮合：积极利用自身影响力，为女书的推广对接资源，如促成在清华大学的展览等高级别文化活动。` 
+},
+  { 
+    id:"黄雪贞", 
+    type:"Scholar", 
+    note:"语言学者，《江永方言研究》作者。其研究成果被赵丽明等主流学者广泛认可，并作为确立女书吟唱‘标准音’（城关话）的重要语言学依据。" 
+  },
+  { 
+    id:"陈其光", 
+    type:"Scholar", 
+    note:"语言学家。曾与赵丽明合作，从语言系属（linguistic typology）的专业角度进行排除法分析，论证女书所记录的江永土话并非苗瑶语系，为‘汉源说’提供关键支持。其主编的《女汉字典》因封面使用了一个被认为是错误的字（将‘女书’二字误写），而在学术圈内引发争议。" 
+  },
+  { 
+    id:"远藤织枝", 
+    type:"Scholar", 
+    note:String.raw`日本学者，对女书的存续起到了关键的外部推动作用。她于90年代的田野调查，促使因时代变故而中断书写多年的何艳新，重新开始女书创作，并资助其赴日交流。她被引述为较早将女书定位为“文化遗产”的学者之一，这一视角深刻影响了后续的保护话语。在女书的文字标准、国际编码等问题上，其观点与中方学者（特别是赵丽明）存在一定的讨论空间和潜在分歧。` 
+  },
+  { 
+    id:"朱莉（Giulia）", 
+    type:"Scholar", 
+    note:"意大利籍博士生/译者/策展合作者，师从赵丽明。作为活跃的跨文化传播者，她通过翻译、举办展演工作坊等形式，将女书文化连接到欧洲的艺术与学术场域。在实践支队调研期间，她与赵丽明同行，并参与了清华校庆相关的女书活动，是国际化学术力量介入女书生态的代表人物。" 
+  },
+  { 
+    id:"宫哲兵", 
+    type:"Scholar", 
+    note:"早期研究者之一，也是学术争议的焦点人物。在赵丽明的内部交流中，他被作为“学术乱象”的典型案例严厉批评，被指责为了追求轰动效应而自造女字、提出缺乏依据的“女书同性恋文化说”，并被定性为进行“掠夺式研究”和发表“投机性观点”。其学术声誉在核心研究圈内存在巨大争议。" 
+  },
+  { 
+    id:"谢志民", 
+    type:"Scholar", 
+    note:"女书研究的批判性学者，《女书研究的现状和存在的问题》一文的作者。他对女书研究领域的乱象进行了系统性批判，包括‘男撰女书’、‘自造女字’、‘用村话注音代替标准音’等问题。其批判火力广泛，在文中直接点名批评了周硕沂（篡改）、宫哲兵（投机）乃至赵丽明（在某些观点上）等多位知名学者，是学术圈内部制衡与论战的重要声音。"
+  },
+  { 
+    id:"周硕沂", 
+    type:"Scholar", 
+    note:"江永县文化馆出身的早期研究者与推广者，对女书的发现和早期传播有贡献。然而，他也是整个女书研究领域中争议最大的人物之一，被谢志民等学者公开指控存在严重的学术不端行为，核心争议点在于“男撰女书”——即他是否曾以男性身份创作、甚至篡改女书原作。尽管争议缠身，部分访谈记录也显示他曾与一些传承人有教学或请教的互动。" 
+  },
+  { 
+    id:"潘慎", 
+    type:"Scholar", 
+    note:"“母系社会遗留说”的早期提出者之一。该观点试图从社会形态角度解释女书成因，但在后续研究中被赵丽明等主流学者以缺乏江永当地的人类学和历史学证据为由予以驳斥。" 
+  },
+  { 
+    id:"李金玲", 
+    type:"Scholar", 
+    note:"女书起源“新石器时代刻画符号说”的提出者。这一假说试图将女书历史推至极为古远的源头，但因缺乏考古学和古文字学的证据链支持，遭到主流学界的普遍反对和证伪。" 
+  },
+  { 
+    id:"彭润泽", 
+    type:"Scholar", 
+    note:"学者，曾对黄雪贞关于江永方言的研究提出过批评或不同意见。这反映了即使在作为女书研究基础的方言学领域，内部也存在着持续的学术讨论和未决的争议。" 
+  },
+  { 
+    id:"季羡林", 
+    type:"Scholar", 
+    note:"国学泰斗。他为赵丽明主编的《中国女书合集》撰写序言，将研究女书比作揭开“铁幕”，高度肯定了农家妇女创造文字的非凡意义，为女书研究提供了顶级的学术声誉背书。" 
+  },
+  { 
+    id:"周有光", 
+    type:"Scholar", 
+    note:"语言文字学家。同样为《中国女书合集》撰序，他从社会进步和女性解放的宏大视角出发，提出了一个极具影响力的论断：“（女书）可以说是妇女在文字和文学上，争取平等、自我解放的第一步”，将女书的价值提升到了现代文明史的高度。" 
+  },
+  { 
+    id:"李学勤", 
+    type:"Scholar", 
+    note:"历史学家、古文字学家。他在为《中国女书合集》所作的序中，称女书是“我国古代妇女的一项惊人创造”，以其在古文字领域的权威地位，肯定了女书作为一种独立文字系统的创造性价值。" 
+  },
+  { 
+    id:"郑至慧", 
+    type:"Scholar", 
+    note:String.raw`【女权视角】台湾妇女运动的重要参与者与理论家。她并非专门的女书研究者，而是从当代女性主义的立场出发，将女书视为一种重要的文化资源和精神象征。她认为“江永女书是女性的光荣”，并致力于通过书写和诠释，从女书中发掘和建立女性的主体性与文化价值，是外部女性主义视角介入女书话语体系的代表。` 
+  },
+  { 
+    id:"李庆福", 
+    type:"Scholar", 
+    note:"学者。其研究工作包括对女书学术史的综述，例如他曾引述远藤织枝将女书定位为“文化遗产”的观点，并对学界存在的各种分歧和争议进行了梳理，扮演了学术史总结和引介者的角色。" 
+  },
+  { 
+    id:"张爱国", 
+    type:"Official", 
+    note:"地方政府领导的代表。作为时任江永县委书记，他为《闺中奇迹——中国女书》一书撰写前言，将女书的创造归结为“女性集体智慧的结晶”。这种表述代表了官方对女书文化价值的高度认可和支持，是将其作为地方文化品牌进行打造的政治背书。" 
+  },
+  { 
+    id:"周红金", 
+    type:"Scholar", 
+    note:"湖南女子学院的学者，长期从事女书的研究、教学工作，并积极与江永地方政府及传承人对接。在实践支队的前期筹备中，他曾作为合作方与清华团队接洽，但后因其学术观点和研究方法受到赵丽明教授极其尖锐的批评（被指“不像做学问的”、“胡说八道”），导致清华团队最终决定中断与他的合作。这一事件构成了实践支队“重大转折”的关键，凸显了女书学术圈内部深刻的门户之见与话语权之争。" 
+  },
+
+  // —— 传承人/实践者 ——
+  { 
+    id:"何艳新", 
+    type:"Transmitter", 
+    note:String.raw`高龄“半自然传人”，被赵丽明认为是“活资料”。
+• 生计困境：官方补贴每年3000元、养老金每年600元，收入微薄。当前最大诉求是解决危房问题，但政府提出的2万元拆迁补贴被她认为不足以重建且无处安置，陷入僵局。
+• 学术合作创伤：口述称在与赵丽明合作翻译《中国女书合集》期间，每月仅获500元报酬，且最终出版物未署其名，对此感到被剥削和不公，这是女书生态中学术权力不对等的关键案例。
+• 制度与“原真性”的冲突：明确反对当下流行的毛笔“柳叶体”和女书园改编的“新歌”，坚守“硬笔（竹棍锅灰）”书写和“诉苦”的核心功能。其孙女因只会唱“老歌”而无法通过官方传承人评选，是原生家庭传承与官方标准化体系冲突的典型。
+• 外部影响：90年代经日本学者远藤织枝鼓励而重启书写，是外部力量介入的早期案例。`
+  }, 
+  { 
+    id:"何静华", 
+    type:"Transmitter", 
+    note:String.raw`后学型传承人的代表。
+• 传承路径：据材料记载，她并非从小耳濡目染，而是后期学习者。其传承人身份的获得，得益于在一次国家级评审中，专家评委（一说为赵丽明）认为应有不同风格的代表而推荐入选。
+• 学术关联：曾向早期研究者周硕沂求教，反映了早期文化馆体系在女书传播中的作用。
+• 代际影响：其女蒲丽娟也成为传承人，形成了“母女传承”的模式，在官方和学术视野中获得了较高的关注度。` 
+  }, 
+  { 
+    id:"胡美月", 
+    type:"Transmitter", 
+    note:String.raw`市场化较为成功的传承人之一。
+• 商业合作：有记录显示她与商业品牌合作写字，获得了相对可观的酬劳，是传承人将文化资本转化为经济资本的直接案例。
+• 官方认可：频繁出现在高级别的官方活动中，如清华大学的女书展览等重要节点，常与领导、核心学者同场出现，显示其在官方叙事中的代表性地位。` 
+  }, 
+  { 
+    id:"胡欣", 
+    type:"Transmitter", 
+    note:String.raw`新生代传承人的核心代表，纪录片《密语者》主角之一。
+• 公众形象与荣誉：拥有人大代表等社会身份和多项政治荣誉，是官方推出的“女书代言人”。其对外联络多通过官方渠道进行，体现了与体制的紧密良性互动。
+• 务实的商业化理念：承认“后女书时代”的到来，认为女书的原始功能已消亡。她积极拥抱市场，在县城开设“女书手信”店作为平台，强调通过研学、文创等方式让女书“进人、进生活”，是一种务实的“活化”路径。
+• 批判性思考：对僵化的传承人年度考核制度提出尖锐批评，认为其“太机械化”、“不人性化”，给高龄传承人造成巨大负担。
+• 文化内核的坚守与澄清：坚决反对“普通话女书”，认为其脱离了方言的根。同时，不赞同将女书简单等同于“女性主义”的对抗工具，认为其精神内核是一种“委婉表达不满”的生存智慧。`
+  }, 
+  { 
+    id:"胡艳玉", 
+    type:"Transmitter", 
+    note:String.raw`与学术界互动活跃的传承人。
+• 学术捐赠：曾向清华大学捐赠自己的女书作品，这一行为被赵丽明在内部会议中提及，是传承人与顶尖学术机构建立联系、获得认可的一种方式。` 
+  }, 
+  { 
+    id:"蒲丽娟", 
+    type:"Transmitter", 
+    note:String.raw`传承人中的“第二代”。
+• 传承背景：作为何静华的女儿，她的成长路径与老一辈的“自然传人”完全不同，更多是在母亲的言传身教和女书已被“遗产化”的背景下学习。
+• 被看见的路径：因其母亲与学界的紧密连结，她从小就进入了研究者的视野，成为观察女书代际传承的重要样本。` 
+  }, 
+  { 
+    id:"何跃娟", 
+    type:"Transmitter", 
+    note:String.raw`社交媒体上活跃的新生代。
+• “表演化”争议：她举办的“拜师仪式”等活动，在赵丽明等学者的内部讨论中被作为女书传承“表演化”、“商业化”的负面案例进行批评，认为其不符合传统习俗，是为迎合市场而创造的“伪民俗”。` 
+  }, 
+  { 
+    id:"义运娟", 
+    type:"Transmitter", 
+    note:String.raw`县域传承人名录中的一员，代表了官方认证的、在本地从事传承工作的更广泛的传承人群体。她们的存在是传承人制度化建设的基础，但在核心讨论中的个体信息不多。` 
+  }, 
+  { 
+    id:"周惠娟", 
+    type:"Transmitter", 
+    note:String.raw`县域传承人名录中的一员，与义运娟类似，是构成女书传承中坚力量的“基座”，是地方传承生态网络中的一个节点。` 
+  }, 
+  { 
+    id:"阳焕宜", 
+    type:"Transmitter", 
+    note:String.raw`（已故）被广泛称为“最后一位自然传承人”，生活于河渊村。她在学术界（特别是赵丽明的研究叙事中）被视为衡量女书“原真性”的标尺和黄金时代的终结点。她的去世，象征着一个时代的结束，也正是官方启动抢救性保护和传承人制度化建设的直接动因。` 
+  }, 
+  { 
+    id:"高银仙", 
+    type:"Transmitter", 
+    note:String.raw`（已故）老一代关键传承人代表。她的作品是女书研究，特别是赵丽明《中国女书合集》等文献整理工作的重要语料来源。其个人使用的单字数量（约332个）常被用于学术统计，是构建女书文字系统的基础参照之一。` 
+  }, 
+  { 
+    id:"义年华", 
+    type:"Transmitter", 
+    note:String.raw`（已故）老一代传承人。在一些关于早期女书资料真伪的学术争议中，她作为原始资料的提供者或书写者被提及，是部分早期学术公案中的关键当事人之一。` 
+  },
+
+  // —— 研究机构/市场/公众/渠道 ——
+  { 
+    id:"武汉大学中国女书研究中心", 
+    type:"Institution", 
+    note:"国内女书研究的重要机构之一。在学术版图中，其部分学者的观点（如宫哲兵）与清华赵丽明教授的“正统”论述形成竞争与对立，是女书研究领域不同学术阵营与话语权争议的代表。" 
+  },
+  { 
+    id:"湖南女子学院女书文化研究所", 
+    type:"Institution", 
+    note:"地方性研究与推广机构。因其带队老师周红金的学术观点与研究方法受到赵丽明教授极其尖锐的批评（被指“投机”、“利用清华招牌”），成为触发实践支队“重大转折”、与原有合作计划“决裂”的关键事件，凸显了学术圈的门户之见。" 
+  },
+  { 
+    id:"市场力量", 
+    type:"Market", 
+    note:"由商业品牌（如“沪上阿姨”联名）、付费研学团、文创开发者、MCN机构等构成的复杂商业合力。它深刻地塑造着女书的当代样貌，一方面为传承人带来经济收益，另一方面也催生了被学术权威严厉批判的“表演化”、“符号化”和“失真”等问题。" 
+  },
+  { 
+    id:"大众感知", 
+    type:"Public", 
+    note:String.raw`呈现出“冰火两重天”的巨大温差：
+• 本地大众（尤其县城中老年男性）普遍“无感”，认为女书是“她们女人的事”，未能从文化品牌中获得实际经济利益，呈现出精英热与民间冷的显著断裂。
+• 外部大众（尤其通过社交媒体接触女书的年轻人）则抱有强烈的、有时甚至脱离历史语境的“女性主义”等浪漫化想象，并以此为标准对传承人的行为（如书写“他”字）进行评判。` 
+  },
+  { 
+    id:"官方制度", 
+    type:"System", 
+    note:"以《非物质文化遗产名录》为顶层设计，以“代表性传承人”评选制度为核心，以量化的年度考核（教学时长、活动照片视频等）为管理手段的制度合力。它旨在将女书传承“标准化”、“规范化”，但也因此与“原生态”的家庭传承模式（如何艳新孙女因不会“新歌”落选）产生深刻矛盾。"
+  },
+  { 
+    id:"国际传播渠道", 
+    type:"Channel", 
+    note:"由海外学者（如日本的远藤织枝）、跨国联结者（如意大利的朱莉）、国际展览、翻译介绍、学术工作坊等构成的国际传播网络。它一方面提升了女书的全球知名度，另一方面也引入了“文化遗产”、“女性主义”等外部视角，深刻影响着女书的本地实践与自我认同。" 
+  },
+  { 
+    id:"周永亮（宣传）", 
+    type:"Official", 
+    note:"宣传系统干部。在赵丽明的叙述中，他被指是鼓励“一万年历史”等夸大性、非科学性宣传的幕后推手，代表了官方宣传工作中，追求轰动效应与维护学术严谨性之间的张力。"
+  },
+  { 
+    id:"长沙某处长（瑶字误判）", 
+    type:"Official", 
+    note:"一个典型的“外行指导内行”的案例。该干部因看到谭盾音乐节女书表演队伍中有瑶族人，表演地点在勾蓝瑶寨，便草率断言女书是“瑶族文字”。此事常被学者用来警示，在文化工作中缺乏深入研究的表层观察，极易导致对文化遗产的根本性误判。"
+  },
+  { 
+    id:"申遗项目（世界记忆遗产）", 
+    type:"Event", 
+    note:"女书申报世界记忆遗产名录的尝试。这一动议是驱动女书“标准化”、文献整理和“品牌保护”的重要外部动力。然而，申遗过程的波折或最终流产，也折射出内部资料整理、学术共识、传承状况等多方面存在的复杂问题。"
+  },
+  { 
+    id:"何祥禄（本地干部）", 
+    type:"Official", 
+    note:"官方试图培养的、能接管女书事务的本土干部个案。据文旅局访谈，与他的合作最终失败，这一挫折导致了地方政府与外部学者之间产生了一定的信任裂痕，也凸显了在本地建立一个既懂文化又善管理的人才梯队的长期困难。"
+  },
+  { 
+    id:"实践支队（青年研究者）", 
+    type:"Institution", 
+    note:"从外部进入女书生态的青年高校团队。他们的实践历程本身就是一则寓言：从最初抱持“静默的反叛”等浪漫化想象，到被学术权威（赵丽明）“劈头盖脸”地训诫，再到亲历混乱的行程安排、官场酒桌文化与何艳新奶奶的血泪控诉后彻底“幻灭”，最终完成了从“追随者”到“矛盾描绘者”的认知转变。"
+  },
+  { 
+    id:"本地社群（县城男性店主等）", 
+    type:"Public", 
+    note:"女书宏大叙事下的“沉默的大多数”。以县城理发店、小卖部的中年男性店主为代表，他们提供了最直接的在地经济体感：女书的名气并未转化为客流和收入，甚至感觉“生意还不如以前”。他们对女书的“无感”和“无益论”，构成了对“文旅融合”官方叙事最真实的民间回应。"
+  }
+];
+
+const links = [
+  // —— 官方主导与制度 ——
+  { source:"江永县文旅广体局", target:"女书暑期培训班",   relation:"主办/承载：官方化传承场域（多年）" },
+  { source:"江永县文旅广体局", target:"江永女书生态博物馆", relation:"主阵地：升级改造与体验式传播" },
+  { source:"江永县文旅广体局", target:"江永县非遗保护中心", relation:"制度协同：名录/评审/动态管理" },
+  { source:"江永县文旅广体局", target:"官方制度", relation:"合作：参与制定与执行非遗评审/动态管理等制度" },
+  { source:"江永县文旅广体局", target:"江永县文旅官方账号", relation:"宣传矩阵：计划强化新媒体布局" },
+  { source:"朱亚玲", target:"江永县文旅广体局", relation:"参与：副局长/隶属" },
+  { source:"朱亚玲", target:"女书暑期培训班", relation:"支持：培训班官方化、学员画像更新" },
+  { source:"张爱国", target:"江永县政府", relation:"参与：时任县委书记" },
+
+
+  // —— 事件对接 ——
+  { source:"江永县政府", target:"清华女书展（2025校庆）", relation:"领导到场：对接契机" },
+  { source:"江永县文旅广体局", target:"清华女书展（2025校庆）", relation:"干部到场：对接契机" },
+  { source:"赵丽明", target:"清华女书展（2025校庆）", relation:"参与/对接：展示与资源撮合" },
+
+  // 传承人与传承人
+  { source:"蒲丽娟", target:"何静华", relation:"母女关系：因母亲与学界连结而受关注" },
+  { source:"高银仙", target:"胡美月", relation:"祖孙关系：胡美月为其孙女" },
+  { source:"周惠娟", target:"周硕沂", relation:"兄长：书法技艺指导" },
+
+  // —— 传承人与官方：双向态度 ——
+  { source:"江永县文旅广体局", target:"何艳新", relation:"合作：年度考核/资料协助；住房多部门协同" },
+  { source:"何艳新", target:"江永县文旅广体局", relation:"复杂：被利用感/补贴不足与制度性支持并存" },
+  { source:"胡艳玉", target:"江永女书生态博物馆", relation:"合作：导览与一线教学（书写/吟唱/刺绣）" },
+  { source:"江永县政府", target:"义运娟", relation:"背书：代表性传承人" },
+
+  { source:"江永县文旅广体局", target:"胡美月", relation:"合作：品牌写字/商业项目对接" },
+  { source:"江永县文旅广体局", target:"胡欣", relation:"背书：政治荣誉/社会形象；对外联络渠道" },
+
+  // —— 学者 ↔ 官方/机构 ——
+  { source:"赵丽明", target:"江永县文旅广体局", relation:"对接：展务/研究节点的资源撮合" },
+  { source:"湖南女子学院女书文化研究所", target:"周红金", relation:"任职/主持：研究与教学" },
+  { source:"赵丽明", target:"湖南女子学院女书文化研究所", relation:"反对：认为其学术不深、过度商业化、蹭流量（项目口径）" },
+  { source:"赵丽明", target:"周红金", relation:"反对：强烈不满/负面评价（学术水平、商业化、蹭清华流量等）" },
+
+  // —— 学者之间：支持/合作/反对/复杂 ——
+  { source:"赵丽明", target:"黄雪贞", relation:"认可：认可其《江永方言研究》，并将其成果作为论证女书吟唱应以“城关话”为“标准音”的核心语言学依据。" },
+  { source:"赵丽明", target:"陈其光", relation:"复杂：在语言学领域进行合作，运用专业的排除法共同论证女书所记录的方言非苗瑶语系，为“汉源说”提供关键支持；但在女书国际编码提案等学术讨论中，曾对其主编的《女汉字典》封面用字错误等问题提出过公开的学术质疑。" },
+
+  { source:"赵丽明", target:"宫哲兵", relation:"反对：认为其是“学术乱象”的代表，公开及私下多次批评其为追求轰动效应而“自造女字”、提出“同性恋文化说”等，并指责其研究方式为“掠夺式”的学术不端行为。" },
+  { source:"赵丽明", target:"谢志民", relation:"反对：否定其‘甲骨文演变说’" },
+  { source:"赵丽明", target:"周硕沂", relation:"反对：‘秦始皇遗留说’与男撰作品" },
+  { source:"赵丽明", target:"潘慎", relation:"反对：‘母系社会说’" },
+  { source:"赵丽明", target:"李金玲", relation:"反对：‘新石器刻画符号说’失实" },
+  { source:"赵丽明", target:"彭润泽", relation:"反对：反对其对黄雪贞方言研究的批评" },
+  { source:"彭润泽", target:"黄雪贞", relation:"反对：质疑其将‘城关话’确立为女书吟唱的标准音" },
+  { source:"赵丽明", target:"朱莉（Giulia）", relation:"支持：指导其研究" },
+  { source:"朱莉（Giulia）", target:"赵丽明", relation:"支持：帮助其翻译《传奇女书》意大利语版本" },
+  { source:"宫哲兵", target:"周硕沂", relation:"竞争/冲突：在地方资料与文物上发生‘抢夺资料’等冲突；观点分歧，周提出‘秦始皇遗留说’，宫被指‘自造女字/猎奇论调’" },
+
+  // —— 谢志民 → 他者 ——
+  { source:"谢志民", target:"周硕沂", relation:"反对：指控‘男撰女书’/篡改原始材料" },
+  { source:"谢志民", target:"宫哲兵", relation:"反对：撰文批评其存在“自造女字”以凑文字数量的问题。" },
+  { source:"谢志民", target:"赵丽明", relation:"反对：在其对整个女书研究领域的批判中，同样指出赵丽明的著作里也收录了被认为是“自造”的女字，将其纳入批评范围。" },
+
+  // —— 撰序/出版/引述（支持/传播） ——
+  { source:"季羡林", target:"赵丽明", relation:"支持：为《中国女书合集》撰序" },
+  { source:"周有光", target:"赵丽明", relation:"支持：为《中国女书合集》撰序" },
+  { source:"李学勤", target:"赵丽明", relation:"支持：为《中国女书合集》撰序" },
+  { source:"郑至慧", target:"宫哲兵", relation:"合作：出版/推广《女书——世界唯一的女性文字》" },
+  { source:"李庆福", target:"远藤织枝", relation:"引述：女书定位为‘文化遗产’" },
+
+  // —— 学者 ↔ 传承人：双向态度/互动 ——
+  { source:"赵丽明", target:"何静华", relation:"支持：评审中曾予推荐，影响其等级评定" },
+  { source:"赵丽明", target:"何艳新", relation:"复杂：2003清华合作冲突（翻译/署名/改字）与‘原真性’共识并存" },
+  { source:"何艳新", target:"赵丽明", relation:"复杂：被利用感/署名争议与‘原真性’共识并存" },
+  { source:"赵丽明", target:"胡美月", relation:"支持：建议其作为关键访谈对象；品牌合作与写字实践" },
+  { source:"何静华", target:"周硕沂", relation:"请教：曾向周硕沂请教" },
+
+
+  { source:"远藤织枝", target:"何艳新", relation:"合作：90年代邀请重启书写；赴日交流" },
+  { source:"远藤织枝", target:"赵丽明", relation:"复杂：标准/编码讨论（学术分歧与沟通）" },
+  { source:"赵丽明", target:"远藤织枝", relation:"复杂：坚持以老一代作品为标准的立场表达" },
+
+  { source:"赵丽明", target:"何跃娟", relation:"反对：‘拜师仪式’表演化/失真" },
+  { source:"赵丽明", target:"胡欣", relation:"不认可：信息来源‘明星化’，建议绕开" },
+  { source:"赵丽明", target:"高银仙", relation:"支持/原生态：整理其作品以编撰《中国女书合集》" },
+  { source:"赵丽明", target:"阳焕宜", relation:"支持/原生态：整理其作品以编撰《中国女书合集》；长期关注与关怀（摄影留影、陪伴参会）;1995年世界妇女大会亲自安排轮椅、协助登天安门城楼情感评价：‘阳光、慈祥、刚强’" },
+  { source:"赵丽明", target:"义年华", relation:"支持/原生态：整理其作品以编撰《中国女书合集》" },
+
+  // —— 市场/公众/制度 ——
+  { source:"胡欣", target:"市场力量", relation:"支持：【务实的合作】积极拥抱市场，主张“进人、进生活”是传承必要路径" },
+  { source:"市场力量", target:"大众感知", relation:"复杂：【迎合与误读】社媒等放大知名度，也加剧对“女性主义”的浪漫化想象与误读" },
+  { source:"胡欣", target:"大众感知", relation:"复杂：【错位】坚决否认女书与“女性主义”的直接关联，与外部年轻一代的符号化想象冲突" },
+  { source:"官方制度", target:"大众感知", relation:"反对：精英热难转化为本地民众收益/认同，致使文化符号与日常生活脱节" },
+
+  // —— 机构/学者 归属或合作 ——
+  { source:"宫哲兵", target:"武汉大学中国女书研究中心", relation:"合作：研究与社会影响（历史阶段）" },
+  { source:"湖南女子学院女书文化研究所", target:"江永县文旅广体局", relation:"合作：教学/实践项目对接" },
+
+  // —— 海外/国际传播 ——
+  { source:"朱莉（Giulia）", target:"国际传播渠道", relation:"合作：译介与展演/工作坊（欧洲传播）" },
+  { source:"远藤织枝", target:"国际传播渠道", relation:"合作：跨国学术传播" },
+
+  // —— 区域展陈协同（示意） ——
+  { source:"永州博物馆", target:"江永女书生态博物馆", relation:"合作：区域展陈协同" },
+
+  // —— 宣传夸大/族属误判/申遗流程 ——
+  { source:"赵丽明", target:"周永亮（宣传）", relation:"反对：拒绝‘一万年’夸大宣传" },
+  { source:"赵丽明", target:"长沙某处长（瑶字误判）", relation:"反对：逻辑跳跃的族属误判" },
+  { source:"赵丽明", target:"申遗项目（世界记忆遗产）", relation:"复杂：推动期望与流程失误并存" },
+  { source:"江永县政府", target:"申遗项目（世界记忆遗产）", relation:"复杂：组织推进但专业性不足" },
+
+  // —— 本土人才培养裂痕 ——
+  { source:"赵丽明", target:"何祥禄（本地干部）", relation:"反对：深造合作破裂/信任受损" },
+
+  // —— 代际/礼仪冲突 ——
+  { source:"实践支队（青年研究者）", target:"赵丽明", relation:"复杂：‘酒桌礼仪/人情世故’之争，反感其对女性主义话题的回避；赵丽明的守正观点和田野调查方法值得借鉴，早期为实践支队指明了一些方向，提供了很多信息与资源" },
+  { source:"实践支队（青年研究者）", target:"江永县文旅广体局", relation:"复杂：合作需求与官场礼仪压力并存" },
+
+  // —— 实践支队与关键主体（补充） ——
+  { source:"实践支队（青年研究者）", target:"胡欣", relation:"复杂：访谈/观察其市场化实践，合作取材并保持反思" },
+  { source:"实践支队（青年研究者）", target:"何艳新", relation:"合作：入户访谈与生活困境记录" },
+  { source:"实践支队（青年研究者）", target:"湖南女子学院女书文化研究所", relation:"复杂：曾拟联合调研，后因学界冲突未落地" },
+
+  // —— 在地体感/市场-政府 ——
+  { source:"本地社群（县城男性店主等）", target:"江永县文旅广体局", relation:"复杂：文化品牌热但个体经济体感冷" },
+  { source:"本地社群（县城男性店主等）", target:"江永女书生态博物馆", relation:"复杂：展陈中心化但日常疏离" },
+  { source:"市场力量", target:"江永县文旅广体局", relation:"合作：文旅项目招商、活动引流与内容供给" },
+  { source:"江永县文旅广体局", target:"市场力量", relation:"复杂：品牌化诉求与监管/原真性之间的博弈" }
+];
+
+/* ========== 画布与力导 ========== */
+const svg = d3.select('#graph');
+// 响应式：使用容器尺寸
+const bbox = svg.node().getBoundingClientRect();
+const width = bbox.width || 900;
+const height = bbox.height || 600;
+svg.attr('viewBox', [0,0,width,height]);
+
+const zoomLayer = svg.append('g');
+const edgeLayer = zoomLayer.append('g');
+const nodeLayer = zoomLayer.append('g');
+const labelLayer = zoomLayer.append('g');
+
+// 预索引：查找双向关系
+const key = (a,b)=>`${a}|||${b}`;
+const linkMap = new Map();
+links.forEach(l=>{ linkMap.set(key(l.source,l.target), l); });
+links.forEach(l=>{
+  l.kind = inferKind(l.relation);
+  l.reverse = linkMap.get(key(l.target,l.source)) || null;
+});
+
+const link = edgeLayer.selectAll('line')
+  .data(links)
+  .enter().append('line')
+  .attr('class','edge')
+  .attr('stroke', d => EDGE_COLORS[d.kind] || '#9ca3af');
+
+function nodeRadius(d){
+  // 基础 8；政府 +3；特别：赵丽明 同政府大小
+  let r = 8;
+  if (d.type === 'Government') r += 3;
+  if (d.id === '赵丽明') r += 3; // 放大到与政府等同
+  if (d.id === '实践支队（青年研究者）') r += 2;
+  if (d.id === '周硕沂') r += 1.5;
+  if (d.id === '谢志民') r += 1.5;
+  if (d.id === '宫哲兵') r += 1.5;
+
+  return r;
+}
+
+const node = nodeLayer.selectAll('g')
+  .data(nodes)
+  .enter().append('g')
+  .attr('class','node')
+  .call(d3.drag()
+    .on('start', dragstarted)
+    .on('drag', dragged)
+    .on('end', dragended));
+
+node.append('circle')
+  .attr('r', d => nodeRadius(d))
+  .attr('fill', d => COLORS[d.type] || '#94a3b8')
+  .attr('stroke', '#0b1117')
+  .attr('stroke-width', 1.5);
+
+node.append('text')
+  .attr('class','label')
+  .attr('x', 12)
+  .attr('y', 4)
+  .text(d => d.id);
+
+const edgeLabel = labelLayer.selectAll('text')
+  .data(links)
+  .enter().append('text')
+  .attr('class','label edge-label')
+  .attr('font-size', 9)
+  .text(d => d.relation)
+  .style('display', 'none');
+
+/* ========== 交互 ========== */
+const tip = document.getElementById('tooltip');
+const detail = document.getElementById('detail');
+
+function showTip(html, x, y){ tip.innerHTML = html; tip.style.left = x+'px'; tip.style.top = y+'px'; tip.style.opacity = 1; }
+function hideTip(){ tip.style.opacity = 0; }
+
+node.on('mousemove', (event,d) => {
+  showTip(`<b>${d.id}</b><br/>类型：${TYPE_LABEL[d.type]||d.type}<br/>概述：${(d.note||'—').replace(/\n/g,'<br/>')}`, event.clientX, event.clientY);
+}).on('mouseleave', hideTip)
+  .on('click', (event,d) => selectNode(d))
+  .on('dblclick', (event,d) => { d.fx = (d.fx==null? d.x:null); d.fy = (d.fy==null? d.y:null); });
+
+link.on('mousemove', (event,d) => {
+  const fName = nameOf(d.source), tName = nameOf(d.target);
+  const parts = [];
+  parts.push(`<b>${fName} → ${tName}</b> <span style="color:${EDGE_COLORS[d.kind]}">【${d.kind}】</span><br/>${d.relation}`);
+  if (d.reverse){
+    const k2 = inferKind(d.reverse.relation);
+    parts.push(`<b>${tName} → ${fName}</b> <span style="color:${EDGE_COLORS[k2]}">【${k2}】</span><br/>${d.reverse.relation}`);
+  }
+  showTip(parts.join('<hr style="border:none;border-top:1px dashed #334155;margin:6px 0">'), event.clientX, event.clientY);
+}).on('mouseleave', hideTip)
+  .on('click', (event,d) => selectLink(d));
+
+let selected = null, filterMode = false, showEdgeLabel = false;
+
+function selectNode(d){ selected = { kind:'node', data:d }; detail.innerHTML = renderNodeDetail(d); if(filterMode) setFilter(true); }
+function selectLink(d){ selected = { kind:'link', data:d }; detail.innerHTML = renderLinkDetail(d); }
+
+function renderNodeDetail(d){
+  return `<div style="font-size:14px"><b>${d.id}</b></div>
+    <div style="opacity:.85;margin:.5em 0">类型：${TYPE_LABEL[d.type]||d.type}</div>
+    <div style="font-size:13px;white-space:pre-wrap">${d.note||'—'}</div>`;
+}
+function renderLinkDetail(d){
+  const sName = nameOf(d.source), tName = nameOf(d.target);
+  const forward = {kind:d.kind, text:d.relation, s:sName, t:tName};
+  const rev = d.reverse ? {kind:inferKind(d.reverse.relation), text:d.reverse.relation, s:tName, t:sName} : null;
+  let html = `<div style="font-size:14px"><b>${forward.s} ⇄ ${forward.t}</b></div>`;
+  html += `<div style="margin-top:6px;font-size:13px;white-space:pre-wrap">
+  <div>① <b>${forward.s} → ${forward.t}</b>（<span style="color:${EDGE_COLORS[forward.kind]}">${forward.kind}</span>）
+${forward.text}</div>`;
+  if (rev){ html += `<div style="margin-top:6px">② <b>${rev.s} → ${rev.t}</b>（<span style="color:${EDGE_COLORS[rev.kind]}">${rev.kind}</span>）
+${rev.text}</div>`; }
+  html += `</div>`;
+  return html;
+}
+
+/* ========== 高亮过滤（近邻 / 关系色 / 主体类型） ========== */
+function setFilter(active){
+  filterMode = active;
+  if (!selected || selected.kind!=="node"){
+    node.classed('muted', false);
+    link.classed('muted', false);
+    edgeLabel.classed('muted', false);
+    return;
+  }
+  const center = selected.data.id;
+  const neighbors = new Set([center]);
+  links.forEach(l=>{
+    const s = nameOf(l.source), t = nameOf(l.target);
+    if (s===center) neighbors.add(t);
+    if (t===center) neighbors.add(s);
+  });
+  node.classed('muted', d => !neighbors.has(d.id));
+  link.classed('muted', d => !(nameOf(d.source)===center || nameOf(d.target)===center));
+  edgeLabel.classed('muted', d => !(nameOf(d.source)===center || nameOf(d.target)===center));
+}
+
+// 关系颜色筛选 + 主体类型筛选
+const visibleKinds = new Set(['support','oppose','complex']);
+const visibleTypes = new Set(Object.keys(COLORS));
+const nodeIndex = new Map(nodes.map(n=>[n.id,n]));
+const typeOf = x => nodeIndex.get(nameOf(x))?.type;
+
+function applyFilters(){
+  // 节点：仅显示选中类型
+  node.style('display', d => visibleTypes.has(d.type) ? null : 'none');
+  // 边：类型 + 颜色 均满足才显示
+  link.style('display', d => (visibleKinds.has(d.kind) && visibleTypes.has(typeOf(d.source)) && visibleTypes.has(typeOf(d.target))) ? null : 'none');
+  // 边标签：同上，再叠加显示开关
+  edgeLabel.style('display', d => (showEdgeLabel && visibleKinds.has(d.kind) && visibleTypes.has(typeOf(d.source)) && visibleTypes.has(typeOf(d.target))) ? 'block' : 'none');
+}
+
+function toggleEdgeLabel(){ showEdgeLabel = !showEdgeLabel; applyFilters(); }
+
+/* ========== 布局力导 ========== */
+const sim = d3.forceSimulation(nodes)
+  .force('charge', d3.forceManyBody().strength(-180))
+  .force('link', d3.forceLink(links).id(d=>d.id).distance(120).strength(0.4))
+  .force('center', d3.forceCenter(width/2, height/2))
+  .force('collide', d3.forceCollide().radius(26));
+
+sim.on('tick', () => {
+  link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+  node.attr('transform', d => `translate(${d.x},${d.y})`);
+  edgeLabel.attr('x', d => (d.source.x + d.target.x)/2)
+           .attr('y', d => (d.source.y + d.target.y)/2);
+});
+
+/* ========== 拖拽/缩放/快捷键 ========== */
+function dragstarted(event, d){ if(!event.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }
+function dragged(event, d){ d.fx=event.x; d.fy=event.y; }
+function dragended(event, d){ if(!event.active) sim.alphaTarget(0); /* 保持固定；双击释放 */ }
+
+// 提升可放大倍数到 8x（原 3x）
+svg.call(d3.zoom().scaleExtent([0.2,8]).on('zoom', (event)=>{ zoomLayer.attr('transform', event.transform); }));
+
+document.addEventListener('keydown', e=>{
+  const k=e.key.toLowerCase();
+  if(k==='f') setFilter(!filterMode);
+  if(k==='l') toggleEdgeLabel();
+  if(k==='r'){ selected=null; setFilter(false); node.classed('muted',false); link.classed('muted',false); edgeLabel.classed('muted',false); applyFilters(); }
+});
+
+// 构建“节点类型”图例
+const nodeLegend = document.getElementById('nodeLegend');
+Object.keys(COLORS).forEach(t=>{
+  const row = document.createElement('div');
+  row.innerHTML = `<span class=\"dot\" style=\"background:${COLORS[t]}\"></span><span>${TYPE_LABEL[t]||t}</span>`;
+  nodeLegend.appendChild(row);
+});
+
+// 绑定“关系颜色筛选”复选框
+document.querySelectorAll('#kindFilter input[type=checkbox]').forEach(cb=>{
+  cb.addEventListener('change', ()=>{
+    if (cb.checked) visibleKinds.add(cb.value); else visibleKinds.delete(cb.value);
+    applyFilters();
+  });
+});
+
+// 生成并绑定“主体筛选”复选框（可实现“只看学者之间关系”）
+const typeFilter = document.getElementById('typeFilter');
+Object.keys(COLORS).forEach(t=>{
+  const id = `type-${t}`;
+  const wrap = document.createElement('label');
+  wrap.innerHTML = `<input id="${id}" type="checkbox" value="${t}" checked> 仅/也 显示：${TYPE_LABEL[t]||t}`;
+  typeFilter.appendChild(wrap);
+});
+
+document.querySelectorAll('#typeFilter input[type=checkbox]').forEach(cb=>{
+  cb.addEventListener('change', ()=>{
+    if (cb.checked) visibleTypes.add(cb.value); else visibleTypes.delete(cb.value);
+    applyFilters();
+  });
+});
+
+// 初始化一次
+applyFilters();
+</script>
+</body>
+</html>
