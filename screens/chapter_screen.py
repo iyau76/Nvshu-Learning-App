@@ -98,7 +98,11 @@ class ChapterScreen(Screen):
         执行重置，显示反馈，并刷新本页面。
         """
         popup_to_dismiss.dismiss()
-        reset_chapter_progress(chapter_key)
+        try:
+            reset_chapter_progress(chapter_key)
+        except OSError:
+            self.show_feedback_popup("保存失败", "进度未能重置，请重试。")
+            return
         self.show_feedback_popup(title="操作完成    𛋴𛊅𛆧𛈒", message=f"'{self.get_chapter_display_name(chapter_key)}' 的进度已重置。")
         # 核心：重置后，刷新章节列表以立即看到变化
         self.populate_chapters()

@@ -1,4 +1,6 @@
 from kivy.uix.label import Label
+from kivy.utils import escape_markup
+from kivy.metrics import dp
 from kivy.properties import StringProperty
 from kivy.uix.screenmanager import Screen
 from kivy.properties import ListProperty, ObjectProperty
@@ -23,7 +25,7 @@ class ReviewScreen(Screen):
 
 
     def generate_report(self):
-        print("🧪 正在调用 generate_report() 方法")
+        self.ids.review_scroll.scroll_y = 1
 
         container = self.ids.review_container
         container.clear_widgets()
@@ -35,7 +37,7 @@ class ReviewScreen(Screen):
             blocks = []
 
             blocks.append(f"[b]第 {index + 1} 题 ({'单选' if q_type == 'single' else '多选'})[/b]")
-            blocks.append(question['question'])
+            blocks.append(escape_markup(question['question']))
 
             options = session_info.get('options_shuffled', [])
             correct_answers = session_info.get('correct_answers', [])
@@ -43,7 +45,7 @@ class ReviewScreen(Screen):
 
             for i, opt_text in enumerate(options):
                 option_char = chr(ord('A') + i)
-                display_line = f"{option_char}. {opt_text}"
+                display_line = f"{option_char}. {escape_markup(opt_text)}"
 
                 if opt_text in correct_answers:
                     display_line += " [color=33FF33](正确答案)[/color]"
@@ -52,7 +54,7 @@ class ReviewScreen(Screen):
 
                 blocks.append(display_line)
 
-            if self.learning_screen.mode == 'review_old':
+            if self.learning_screen:
                 if 'is_correct' in session_info:
                     is_correct = session_info.get('is_correct', False)
                     result_str = "[color=33FF33]回答正确[/color]" if is_correct else "[color=FF5733]回答错误[/color]"
@@ -60,7 +62,13 @@ class ReviewScreen(Screen):
                 else:
                     blocks.append("[b]作答结果：[/b] 本题未作答。")
 
-            blocks.append(f"[b]解析：[/b] {question.get('explanation', '暂无解析。')}")
+            for attempt, record in enumerate(session_info.get('history', []), 1):
+                if not record['is_correct']:
+                    selected = '；'.join(record['user_selection']) or '未选择'
+                    answers = '；'.join(record['correct_answers'])
+                    blocks.append(f"[b]第 {attempt} 次错答：[/b] {escape_markup(selected)}")
+                    blocks.append(f"[b]当次正确答案：[/b] {escape_markup(answers)}")
+            blocks.append(f"[b]解析：[/b] {escape_markup(question.get('explanation', '暂无解析。'))}")
             blocks.append("-" * 40)
 
             for line in blocks:
@@ -73,6 +81,8 @@ class ReviewScreen(Screen):
                     text_size=(self.width - 40, None),
                     color=(1, 1, 1, 1),
                 )
+                lbl.bind(width=lambda widget, width: setattr(widget, 'text_size', (max(dp(1), width - dp(20)), None)))
+                lbl.bind(texture_size=lambda widget, size: setattr(widget, 'height', size[1] + dp(10)))
                 lbl.texture_update()
                 lbl.height = lbl.texture_size[1] + 10
                 container.add_widget(lbl)

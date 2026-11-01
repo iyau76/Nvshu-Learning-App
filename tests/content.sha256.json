@@ -1,0 +1,14 @@
+{
+  "data/quiz_basics_multi.json": "09d1f61cf9c1d0a7f08805155211080edf75d316f201124b632217ccf240a8ed",
+  "data/quiz_basics_single.json": "ee6f3195f3a62ced66f936aa5c2c29625d044041e4c8f4ee31dd1b775f295efc",
+  "data/quiz_geography_multi.json": "75a6867187faa1a1753e4f35c83f31dcccf7d61f86ce8b32c4e24762e54a65c9",
+  "data/quiz_geography_single.json": "7c4964f340855fa0d98a786152b7dc36e1983d64507ee166a04edb2a5b1552dc",
+  "data/quiz_heritage_multi.json": "e9eaac9cefe9de347364c4ee40c38b2867072ce0d4fbe73a60c532439ea4cba2",
+  "data/quiz_heritage_single.json": "7e3f095d84b3163fbdec532b874e216553ba26a67f3a8c942602c4ce20d9dc2a",
+  "data/quiz_history_multi.json": "103aa9af037d411fd0833b9b7abd14980e171385eb3f5845de5eff1d6e346749",
+  "data/quiz_history_single.json": "2da298c16cf1d08160ba6e415d68d9bf21c6a7808870df11d286aeca84ee813b",
+  "data/quiz_phonology_multi.json": "0cf6ef52da60ded1a76c300a1aeef5140a796304a84631096ac10155bb72e7c7",
+  "data/quiz_phonology_single.json": "cc78ac60019121557ac87433b64b570a4a51e08c0fc09d16b5dcf5d7c81262f9",
+  "assets/banner.png": "580df42d15b19172cc26a447cea5415da6053eff942c8888f7654ad7750b6310",
+  "assets/fonts/NyushuFirmiaItal-1.003.ttf": "71bcf2cbbe64d83653a3bd4e10ad39e52fa2f1efee244223c3935ef6cd3cab3e"
+}

@@ -1,4 +1,3 @@
-import json
 
 from kivy.uix.screenmanager import Screen
 from kivy.uix.popup import Popup
@@ -8,7 +7,7 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView # 关键：导入 ScrollView
 from kivy.properties import StringProperty
 
-from utils.loader import load_settings, STATE_FILE
+from utils.loader import load_settings, save_settings
 from utils.progress_manager import reset_chapter_progress, CHAPTERS
 
 from screens.chapter_screen import ChapterScreen
@@ -32,8 +31,7 @@ class SettingsScreen(Screen):
             if 5 <= num <= 50: # 合理范围检查
                 settings = load_settings()
                 settings["questions_per_session"] = num
-                with open(STATE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(settings, f, indent=2)
+                save_settings(settings)
                 self.show_feedback_popup("成功    𛈒𛇕", "设置已保存！")
             else:
                 self.show_feedback_popup("错误    𛋞𛊃", "请输入一个 5 到 50 之间的整数。")
@@ -103,7 +101,11 @@ class SettingsScreen(Screen):
     def do_reset(self, chapter_key, popup_to_dismiss):
         """执行重置操作并关闭弹窗。"""
         popup_to_dismiss.dismiss()
-        reset_chapter_progress(chapter_key)
+        try:
+            reset_chapter_progress(chapter_key)
+        except OSError:
+            self.show_feedback_popup("保存失败", "进度未能重置，请重试。")
+            return
         self.show_feedback_popup("操作完成    𛋴𛊅𛆧𛈒", f"'{self.get_chapter_display_name(chapter_key)}' 的进度已重置。")
 
     def show_feedback_popup(self, title, message):

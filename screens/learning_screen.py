@@ -5,6 +5,8 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
+from kivy.metrics import dp
+from kivy.utils import escape_markup
 from kivy.properties import StringProperty, ListProperty, ObjectProperty, NumericProperty, BooleanProperty
 
 from utils.quiz_logic import draw_questions, update_progress
@@ -35,9 +37,10 @@ class LearningScreen(Screen):
     def start_new_pass(self):
         """Starts a new loop (pass) through questions not yet learned."""
         if self.mode == 'learn_new':
+            progress = {kind: load_progress(self.chapter, kind) for kind in ('single', 'multi')}
             self.pass_indices = [
                 i for i, (qtype, qidx, _) in enumerate(self.questions)
-                if load_progress(self.chapter, qtype).get(str(qidx), 0) < 2
+                if progress[qtype].get(str(qidx), 0) < 2
             ]
             if not self.pass_indices:
                 self.show_end_of_round_popup()
@@ -46,7 +49,8 @@ class LearningScreen(Screen):
             self.pass_indices = list(range(len(self.questions)))
 
         for i in self.pass_indices:
-            self.session_data[i] = {}
+            history = self.session_data[i].get("history", [])
+            self.session_data[i] = {"history": history}
         
         self.current_pass_pos = 0
         self.render_current_question()
@@ -57,6 +61,7 @@ class LearningScreen(Screen):
         current_q_index = self.pass_indices[self.current_pass_pos]
         
         self.ids.content_area.clear_widgets()
+        self.ids.explanation_scroll.size_hint_y = None
         self.ids.explanation_scroll.height = 0
         self.ids.explanation_scroll.opacity = 0
         self.update_ui_state()
@@ -67,6 +72,7 @@ class LearningScreen(Screen):
 
         q_text = f"[{'单选' if qtype == 'single' else '多选'}]\n\n{question['question']}"
         q_label = Label(text=q_text, font_size="22sp", size_hint_y=None, text_size=(self.width*0.85, None), halign='left')
+        q_label.bind(width=lambda i, v: setattr(i, "text_size", (v * 0.95, None)))
         q_label.bind(texture_size=lambda i, v: setattr(i, 'height', v[1]))
         
         q_scroll = ScrollView(size_hint_y=0.4, do_scroll_x=False); q_scroll.add_widget(q_label)
@@ -93,7 +99,7 @@ class LearningScreen(Screen):
                 options = wrongs + [correct]
             else:
                 corrects = question["correct_answers"]
-                num_corrects = random.randint(2, min(3, len(corrects)))
+                num_corrects = random.randint(min(2, len(corrects)), min(3, len(corrects)))
                 corrects_sample = random.sample(corrects, num_corrects)
                 session_info['correct_answers'] = corrects_sample
                 num_wrongs = max(1, 5 - len(corrects_sample))
@@ -105,12 +111,16 @@ class LearningScreen(Screen):
         options = session_info.get('options_shuffled', [])
         session_info['option_widgets'] = []
         for opt_text in options:
-            btn = Button(text=opt_text, font_size="18sp", size_hint_y=None, height="48dp")
+            btn = Button(text=opt_text, font_size="18sp", size_hint_y=None,
+                         height=dp(48), halign='left', padding=(dp(12), dp(10)),
+                         disabled_color=(1, 1, 1, 1), background_disabled_normal='')
+            btn.bind(width=lambda widget, width: setattr(widget, 'text_size', (max(dp(1), width - dp(24)), None)))
+            btn.bind(texture_size=lambda widget, size: setattr(widget, 'height', max(dp(48), size[1] + dp(12))))
             session_info['option_widgets'].append(btn)
             if qtype == 'single':
                 btn.bind(on_release=lambda instance, s=opt_text: self.check_answer(s))
             else: # multi
-                btn.background_color = (0.5, 0.5, 0.5, 1)
+                btn.background_color = ((0.15, 0.42, 0.2, 1) if opt_text in session_info.get("user_selection", set()) else (0.5, 0.5, 0.5, 1))
                 btn.bind(on_release=self.toggle_selection)
             container.add_widget(btn)
 
@@ -131,7 +141,7 @@ class LearningScreen(Screen):
             btn.background_color = (0.5, 0.5, 0.5, 1)
         else:
             selection_set.add(btn.text)
-            btn.background_color = (0.3, 0.7, 0.3, 1)
+            btn.background_color = (0.15, 0.42, 0.2, 1)
 
     def check_answer(self, user_selection):
         """Checks the user's answer, updates progress, and shows feedback."""
@@ -144,12 +154,23 @@ class LearningScreen(Screen):
         
         is_correct = (set(user_selection) == set(correct_answers)) if qtype == 'multi' else (user_selection in correct_answers)
         
+        try:
+            update_progress(self.chapter, qtype, qidx, is_correct, self.mode)
+        except OSError:
+            Popup(title="保存失败", title_font="NvshuFont",
+                  content=Label(text="答案未能保存，请重试。"), size_hint=(0.8, 0.4)).open()
+            return
         session_info['answered'] = True
         session_info['is_correct'] = is_correct
-        session_info['user_selection'] = {user_selection} if qtype == 'single' else user_selection
-        session_info['attempts'] = session_info.get('attempts', 0) + 1
+        session_info['user_selection'] = {user_selection} if qtype == 'single' else set(user_selection)
+        session_info.setdefault('history', []).append({
+            'is_correct': is_correct,
+            'user_selection': sorted(session_info['user_selection']),
+            'correct_answers': list(correct_answers),
+            'options_shuffled': list(session_info['options_shuffled']),
+        })
+        session_info['attempts'] = len(session_info['history'])
 
-        update_progress(self.chapter, qtype, qidx, is_correct, self.mode)
         self.show_feedback(session_info)
         self.update_ui_state()
 
@@ -162,17 +183,18 @@ class LearningScreen(Screen):
         correct_answers = session_info.get('correct_answers', [])
         for btn in session_info.get('option_widgets', []):
             if btn.text in user_selection:
-                btn.background_color = (0.2, 0.8, 0.2, 1) if btn.text in correct_answers else (0.9, 0.3, 0.3, 1)
+                btn.background_color = (0.15, 0.42, 0.2, 1) if btn.text in correct_answers else (0.65, 0.18, 0.15, 1)
             elif btn.text in correct_answers:
-                btn.background_color = (0.2, 0.8, 0.2, 1)
+                btn.background_color = (0.15, 0.42, 0.2, 1)
             else:
                 btn.background_color = (0.2, 0.2, 0.2, 1)
 
         is_correct = session_info.get('is_correct', False)
         result_text = "[color=33FF33]回答正确！[/color]\n\n" if is_correct else "[color=FF5733]回答错误。[/color]\n\n"
         explanation = self.questions[self.pass_indices[self.current_pass_pos]][2].get("explanation", "暂无解析。")
-        self.ids.explanation_label.text = result_text + explanation
-        self.ids.explanation_scroll.height = self.height * 0.3
+        self.ids.explanation_label.text = result_text + escape_markup(explanation)
+        self.ids.explanation_scroll.size_hint_y = 0.3
+        self.ids.explanation_scroll.scroll_y = 1
         self.ids.explanation_scroll.opacity = 1
         self.ids.explanation_label.font_size = '18sp'
 
@@ -198,7 +220,8 @@ class LearningScreen(Screen):
         if not self.pass_indices: return
         
         if self.mode == 'learn_new':
-            learned_count = sum(1 for q_type, q_idx, _ in self.questions if load_progress(self.chapter, q_type).get(str(q_idx), 0) >= 2)
+            progress = {kind: load_progress(self.chapter, kind) for kind in ('single', 'multi')}
+            learned_count = sum(1 for q_type, q_idx, _ in self.questions if progress[q_type].get(str(q_idx), 0) >= 2)
             self.ids.learned_label.text = f"本轮学会: {learned_count}/{len(self.questions)}"
             self.ids.learned_label.font_size = '18sp'
         else:
@@ -226,7 +249,7 @@ class LearningScreen(Screen):
 
         if self.mode == 'learn_new':
             continue_btn = Button(text='再学一组\n𛇥𛉬𛆼𛊽', font_size='20sp')
-            continue_btn.bind(on_release=lambda x: popup.dismiss(), on_press=self.start_new_round)
+            continue_btn.bind(on_release=lambda x: (popup.dismiss(), self.start_new_round()))
             btn_layout.add_widget(continue_btn)
 
         menu_btn = Button(text='主菜单\n𛋱𛈠𛈁', font_size='20sp')
