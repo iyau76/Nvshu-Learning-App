@@ -1,0 +1,22 @@
+name: Desktop regression tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1 libmtdev1
+      - run: python -m pip install -r requirements.txt pytest
+      - run: xvfb-run -a python -m pytest tests -q
+        env:
+          KIVY_NO_ARGS: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rendered-screens
+          path: artifacts/screenshots

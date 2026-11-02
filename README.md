@@ -78,7 +78,7 @@ python main.py
 
 你可以直接下载安装打包好的 APK 文件：
 
-👉 [点击下载 APK 安装包](./dist/nvshu_app-release.apk)
+👉 [点击下载 APK 安装包](https://github.com/iyau76/Nvshu-Learning-App/releases/download/v0.1-recovered/nvshuapp-0.1-recovered-debug.apk)
 
 安装后即可在安卓设备上运行，无需额外依赖。
 

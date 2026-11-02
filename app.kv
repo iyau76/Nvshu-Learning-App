@@ -24,6 +24,7 @@
         Button:
             text: '测试（开发中）\n𛋰𛈏(𛇶𛆐𛈌)'
             font_size: '28sp'
+            disabled: True
             # on_release: app.root.current = 'testing' # 待开发
         Button:
             text: '设置\n𛊗𛋔'
@@ -81,7 +82,7 @@
             size_hint_y: 1
         ScrollView:
             id: explanation_scroll
-            size_hint_y: 0.3
+            size_hint_y: None
             height: 0
             opacity: 0
             do_scroll_x: False
@@ -122,6 +123,7 @@
         ScrollView:
             do_scroll_x: False
             do_scroll_y: True
+            id: review_scroll
 
             GridLayout:
                 id: review_container           # 👈 用于动态添加多个 Label
@@ -155,11 +157,14 @@
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: None
-            height: '120dp'
+            height: self.minimum_height
             spacing: 10
             Label:
                 text: '修改每轮学习/复习的题目数量 (建议5-20)'
                 font_size: '18sp'
+                size_hint_y: None
+                text_size: self.width, None
+                height: self.texture_size[1]
             TextInput:
                 id: questions_input
                 text: root.questions_per_session_text
